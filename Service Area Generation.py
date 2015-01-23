@@ -114,7 +114,7 @@ srcZCTA_Field = [f for f in NBRTable_FieldList if 'src' in f][0] #find nbr_ZCTA 
 arcpy.SetProgressor("step","finding seed neighbors where dyad max = 1...",0,len(seed_List),1)
 for i in seed_List:
 	currentSeed = i # set current seed equal to i
-	seedQuery = nbrZCTA_Field + " = '" + currentSeed + "'" #seed queary clause
+	seedQuery = nbrZCTA_Field + " = '" + currentSeed + "' AND LENGTH > 0" #seed queary clause shared border length must be greater than 0
 	dyadQuery = DyadProv_field + " = " + currentSeed  #dyad query
 
 	temp_nbr_List = [] #temp list that will get re declared through each iteration
@@ -170,57 +170,68 @@ arcpy.AddMessage("{0} ZCTAs have been assigned".format(str(len(assign_dict))))
 #Go through unassigned ZCTAS and assign them to the best candidate neighbor using a series of
 #dictionaries and lists to track what is going on.
 ###################################################################################################
-problemList = ['51014','50573','50252'] #delete when working correctly
+problemList = ['50252','50262','50570','50595','50104','51523','50027','50275','50038'] #delete when working correctly
 
 while len(unAssigned_List) > 0:
 	arcpy.SetProgressor("step","finding best suited assignment for remaining ZCTAs...",0,len(unAssigned_List),1)
 	for i in unAssigned_List:
 		currentZCTA = i #assign current item to a variable
-		ZCTAQuery = srcZCTA_Field + " = '" + currentZCTA + "'" #seed query clause
+		ZCTAQuery = srcZCTA_Field + " = '" + currentZCTA + "' AND LENGTH > 0" #seed query clause
 		dyadQuery = DyadRec_field + " = " + currentZCTA #dyad query
 		tempDict = {} #temp dictionary
 		temp_nbr_List = [] #list to track potential neighbor matches
-		dyadMax = 0 #temp variable to find the max care sought between a candidate
+		temp_key_List = [] #list to track where neighbors have been assigend to.
+		dyadMax_nbr = 0 #temp variable to find the max care sought between a candidate
+		dyadMax_SA = 0 #temp variable to track the max care sought within the adjacent service areas
+
 
 		#find neighbors for null ZCTA that have already been assigned to a Service Area
 		with arcpy.da.SearchCursor(NeighborTable,NBRTable_FieldList,ZCTAQuery) as cursor:
 			for row in cursor:
 				# if nbr has been assigned, put append to the temp list as candidate
 				if row[NBRTable_FieldList.index(nbrZCTA_Field)] in assign_dict.keys():
+					#create a list of neighbors that haven been assigned arleady
+					temp_nbr_List.append(row[NBRTable_FieldList.index(nbrZCTA_Field)])
 					#get what the potential neighbors have been assigned to and check that duplicates
 					#aren't being append to the list
-					if assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]] not in temp_nbr_List:
-						temp_nbr_List.append(assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]])
+					#if assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]] not in temp_nbr_List:
+					temp_key_List.append(assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]])
 		del row # delete row object
 		del cursor #delete cursor object
 
+		temp_key_List = list(set(temp_key_List)) #remove duplicates from list
 
 		if currentZCTA in problemList: #delete when working correctly
 			arcpy.AddMessage("current neighbor list for {0} is: {1}".format(currentZCTA,str(temp_nbr_List)))
+			arcpy.AddMessage("current key list for {0} is: {1}".format(currentZCTA,str(temp_key_List)))
 
 		#check that the neighbor list is greater than 0. if not, pass.
-		if len(temp_nbr_List) > 0:
+		if len(temp_key_List) > 0:
 			arcpy.SetProgressorLabel("{0} are candidates for {1} to be assigned to".format(str(temp_nbr_List),str(currentZCTA)))
-			#check what neighbors have been assigned to and look in the dyad table for care list
-			with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
-				for row in cursor:
+			#if key list has length of one, only one potential candidate for assignment, so just go with it
+			if len(temp_key_List) == 1:
+				best_nbr = temp_key_List[0]
+			#if length of key list greater than 0
+			else:
 
-					# if dyad pair is max - just assign it!
-					if str(row[DyadTable_FieldList.index(DyadProv_field)]) in temp_nbr_List:
-						if row[DyadTable_FieldList.index("Dyad_max")] == 1:
-							best_nbr = str(row[DyadTable_FieldList.index(DyadProv_field)])
-							arcpy.SetProgressorLabel("{0} best candiate for {1}".format(str(best_nbr),str(currentZCTA)))
-							if currentZCTA in problemList: #delete when working correctly
-								arcpy.AddMessage("best candidate for {0} is: {1}".format(currentZCTA,str(best_nbr)))
-						else: #if dyad max condition isn't satisfied look for the highest n_kids
-							if row[DyadTable_FieldList.index(DyadVisits_Field)] > dyadMax:
-									dyadMax = row[DyadTable_FieldList.index(DyadVisits_Field)] #re assign dydad max
+				#check what neighbors have been assigned to and look in the dyad table for care list
+				with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
+					for row in cursor:
+
+						# if dyad pair is max - just assign it.
+						if str(row[DyadTable_FieldList.index(DyadProv_field)]) in temp_key_List:
+							if row[DyadTable_FieldList.index("Dyad_max")] == 1:
+								best_nbr = str(row[DyadTable_FieldList.index(DyadProv_field)])
+							else: #if dyad max condition isn't satisfied look for the highest n_kids
+								if row[DyadTable_FieldList.index(DyadVisits_Field)] > dyadMax_nbr:
+									dyadMax_nbr = row[DyadTable_FieldList.index(DyadVisits_Field)] #re assign dydad max
 									best_nbr = row[DyadTable_FieldList.index(DyadProv_field)] #assign best neighbor
-									arcpy.SetProgressorLabel("{0} best candiate for {1}".format(str(best_nbr),str(currentZCTA)))
-									if currentZCTA in problemList: #delete when working correctly
-										arcpy.AddMessage("best candidate for {0} is: {1}".format(currentZCTA,str(best_nbr)))
-					else:
-						pass
+									arcpy.AddMessage("best nbr for {0} is {1}".format(str(currentZCTA),str(best_nbr)))
+							if currentZCTA in problemList:
+								arcpy.AddMessage("{0} in temp key list".format(str(row[2])))
+
+						else:
+							pass
 
 			#create assignment query to assign the current ZCTA to the best neighbor
 			AssignQuery = ZCTA_field + " = '" + currentZCTA + "'"
