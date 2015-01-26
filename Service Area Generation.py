@@ -257,8 +257,14 @@ while len(unAssigned_List) > 0:
 	arcpy.ResetProgressor() #reset progressor for next iteration through the above loop
 
 
+
+arcpy.SetProgressorLabel("Dissolving Assigned ZCTAs into Service Areas...")
+ServiceAreas = arcpy.Dissolve_management(ZCTAs,output_Name,"Assigned_To")
 ###################################################################################################
 #Final Output and cleaning of temp data/variables
 ###################################################################################################
 
 arcpy.AddMessage("Process complete!")
+
+# Replace a layer/table view name with a path to a dataset (which can be a layer file) or create the layer/table view within the script
+# The following inputs are layers or table views: "Iowa_ZCTAs"
