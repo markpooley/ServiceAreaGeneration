@@ -168,10 +168,10 @@ arcpy.AddMessage("{0} ZCTAs have been assigned".format(str(len(assign_dict))))
 
 ###################################################################################################
 #Go through unassigned ZCTAS and assign them to the best candidate neighbor using a series of
-#dictionaries and lists to track what is going on.
+#dictionaries and lists to track what is going on. Find neighbors and their assignments. Assign
+#remaining ZCTAS looking for Dyad_Max first, then the most visits. If the best nbr isn't in the
+#generated lists, the current ZCTA is assigned to a neighbor based on most shared boundary.
 ###################################################################################################
-problemList = ['50252','50262','50570','50595','50104','51523','50027','50275','50038'] #delete when working correctly
-
 while len(unAssigned_List) > 0:
 	arcpy.SetProgressor("step","finding best suited assignment for remaining ZCTAs...",0,len(unAssigned_List),1)
 	for i in unAssigned_List:
@@ -192,9 +192,10 @@ while len(unAssigned_List) > 0:
 					#create a list of neighbors that haven been assigned arleady
 					temp_nbr_List.append(row[NBRTable_FieldList.index(nbrZCTA_Field)])
 					#get what the potential neighbors have been assigned to and check that duplicates
-					#aren't being append to the list
-					#if assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]] not in temp_nbr_List:
+
 					temp_key_List.append(assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]])
+					#while trolling through nbr table, find the neighbor with the most shared border
+					#and what it's assigned to.
 					if row[NBRTable_FieldList.index("LENGTH")] > nbr_Length:
 						best_nbr_Length = assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]]
 
@@ -203,18 +204,11 @@ while len(unAssigned_List) > 0:
 
 		temp_key_List = list(set(temp_key_List)) #remove duplicates from list by creating a list from the set of the native list
 
-		if currentZCTA in problemList: #delete when working correctly
-			arcpy.AddMessage("current neighbor list for {0} is: {1}".format(currentZCTA,str(temp_nbr_List)))
-			arcpy.AddMessage("current key list for {0} is: {1}".format(currentZCTA,str(temp_key_List)))
-
 		#check that the neighbor list is greater than 0. if not, pass.
 		if len(temp_key_List) > 0:
 			#if key list has length of one, only one potential candidate for assignment, so just go with it
 			if len(temp_key_List) == 1:
 				best_nbr = temp_key_List[0]
-				if currentZCTA in problemList:
-					arcpy.AddMessage("best nbr for {0} is {1} (max dyad found)".format(str(currentZCTA),str(best_nbr)))
-			#if length of key list greater than 0
 			else:
 
 				#check what neighbors have been assigned to and look in the dyad table for care list
@@ -231,9 +225,6 @@ while len(unAssigned_List) > 0:
 									dyadMax_nbr = row[DyadTable_FieldList.index(DyadVisits_Field)] #re assign dydad max
 									best_nbr = row[DyadTable_FieldList.index(DyadProv_field)] #assign best neighbor
 
-							if str(row[DyadTable_FieldList.index(DyadRec_field)]) in problemList:
-								arcpy.AddMessage("{0} in temp key list".format(str(row[2])))
-
 						else:
 							pass
 
@@ -243,9 +234,6 @@ while len(unAssigned_List) > 0:
 			if best_nbr not in temp_key_List:
 				best_nbr = best_nbr_Length
 				arcpy.SetProgressorLabel("{0} assigned to {1} based on shared border".format(str(currentZCTA),str(best_nbr_Length)))
-
-			if currentZCTA in problemList: #delete when working correctly
-				arcpy.AddMessage("{0} assigned to: {1}".format(currentZCTA,str(best_nbr)))
 
 			#find entry of currnt ZCTA and update the Assigned_To field with the best neighbor
 			with arcpy.da.UpdateCursor(ZCTAs,[ZCTA_field,"Assigned_To"],AssignQuery) as cursor:
