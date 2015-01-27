@@ -1,12 +1,13 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
 #--------------------------------------------------------------------------------------------------
-# Name          :
+# Name          : VisitAggregatorAndLocCalculator.py
 # Author  		: Mark Pooley (mark-pooley@uiowa.edu)
 # Link    		: http://www.ppc.uiowa.edu
 # Date    		: 2015-01-26 11:56:18
-# Version		: $Id$
-# Description	: Description Here
+# Version		: $1.0$
+# Description	: Takes ZCTAs, Service Areas, and the current Dyad table to calculate the Localization
+# of Care (LOC) for each DSA.
 #-------------------------------------------------------------------------------------------------
 
 ###################################################################################################
@@ -27,8 +28,6 @@ DyadTable = arcpy.GetParameterAsText(2)
 Visits_Field = arcpy.GetParameterAsText(3)
 VisitsTotal_Field = arcpy.GetParameterAsText(4)
 
-
-#featureCount = int(arcpy.GetCount_management(input).getOutput(0))
 ###################################################################################################
 # Defining global functions
 ###################################################################################################
@@ -122,19 +121,6 @@ for key,values in Assign_Dict.iteritems():
 			LOC_List.append(row[ServiceAreas_FieldList.index("LOC")])
 	arcpy.SetProgressorLabel("{0} Visits in {1}. {2} total visits.".format(str(Visits_In),str(key),str(Visits_Total)))
 	arcpy.SetProgressorPosition()
-
-
-
-
-###################################################################################################
-#Process
-###################################################################################################
-#arcpy.SetProgressor("step","message",0,#processLength,1)
-
-###################################################################################################
-#Processes
-###################################################################################################
-#arcpy.SetProgressor("step","message",0,#processLength,1)
 
 ###################################################################################################
 #Final Output and cleaning of temp data/variables
