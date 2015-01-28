@@ -79,9 +79,10 @@ for item in FieldsToAdd:
 		arcpy.SetProgressorPosition()
 
 ###################################################################################################
-#the Humdinger
+#Find all care occuring within the Service Area, and the total care sought in all the ZCTAS within
+# the service area to calculate LOC.
 ###################################################################################################
-#arcpy.SetProgressor("step","message",0,#processLength,1)
+
 LOC_List = []
 arcpy.SetProgressor("step","determining LOC for service areas...",0,len(Assign_Dict),1)
 for key,values in Assign_Dict.iteritems():
@@ -91,10 +92,12 @@ for key,values in Assign_Dict.iteritems():
 	Visits_Total = 0
 
 	dyadQuery = DyadProv_field + " = " + key
-	updateQuery = Assigned_To_Field + "= '" + str(key) + "'"
-	ZCTA_List = values #just store values as a seperate list for easier tracking
+	updateQuery = Assigned_To_Field + " = '" + str(key) + "'"
+	ZCTA_List = values #just store values as a seperate list for easier tracking rember, the key is in the list
 
-	#find all instances of visits occuring within the Service Area
+	if key == '50220':
+		arcpy.AddMessage("Seed: {0}, ZCTAs assigned to it: {1}".format(key,ZCTA_List))
+	#find all instances of visits occuring within the Service Area going to the seed as a provider
 	with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
 		for row in cursor:
 			if str(row[DyadTable_FieldList.index(DyadRec_field)]) in ZCTA_List: #convert row to string!
@@ -104,11 +107,12 @@ for key,values in Assign_Dict.iteritems():
 	#find instances of visits occuring between ZCTAs within the same service area where the provider
 	#isn't the seed.
 	for item in ZCTA_List:
-		if item != key: #make sure to not count the seed
+		if item != key: #make sure to not count the seed twice
 			dyadQuery = dyadQuery = DyadProv_field + " = " + item
 			with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
 				if str(row[DyadTable_FieldList.index(DyadRec_field)]) in ZCTA_List:
 					Visits_In += row[DyadTable_FieldList.index(Visits_Field)]
+
 
 	#update rows in the Service Area feature class
 	with arcpy.da.UpdateCursor(ServiceAreas,ServiceAreas_FieldList,updateQuery) as cursor:
