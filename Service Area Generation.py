@@ -126,18 +126,12 @@ for i in seed_List:
 	del row # delete row object
 	del cursor #delete cursor object
 
-	if '52333' in currentSeed:
-		arcpy.AddMessage("52333 neighbor list: {0}".format(temp_nbr_List))
-
 	#find instances where ZCTAs in the temp nbr list and the dyad max is equal to 1 - meaning that the most care
 	#was received in the current seed ZCTA.
 	with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
 		for row in cursor:
-			if row[DyadTable_FieldList.index(DyadRec_field)] in temp_nbr_List and row[DyadTable_FieldList.index("Dyad_max")] != 1:
-				temp_nbr_List.remove(row[DyadTable_FieldList.index(DyadRec_field)])
-
-	if '52333' in currentSeed:
-		arcpy.AddMessage("52333 neighbor list: {0}".format(temp_nbr_List))
+			if str(row[DyadTable_FieldList.index(DyadRec_field)]) in temp_nbr_List and row[DyadTable_FieldList.index("Dyad_max")] != 1:
+				temp_nbr_List.remove(str(row[DyadTable_FieldList.index(DyadRec_field)]))
 
 	del row # delete row object
 	del cursor #delete cursor object
@@ -147,8 +141,7 @@ for i in seed_List:
 			#check that temp row is in nbr list, and it hasn't already been reassigned.
 			if row[0] in temp_nbr_List and row[1] == None:
 				row[1] = currentSeed
-				if '52404' in row[0]:
-					arcpy.AddMessage("52404 assigned to {0}".format(currentSeed))
+
 				arcpy.SetProgressorLabel("{0} assigned to {1}".format(str(row[0]),str(currentSeed)))
 				assign_dict[str(row[0])] = currentSeed #update Assignment Dictionary
 				cursor.updateRow(row)
@@ -171,7 +164,7 @@ del row # delete row object
 del temp_nbr_List
 
 arcpy.AddMessage("{0} ZCTAs have been assigned".format(str(len(assign_dict))))
-arcpy.AddMessage("{0} ZCTAs remain to be assigned".format(str(null_Count)))
+arcpy.AddMessage("{0} ZCTAs remain unassigned".format(str(null_Count)))
 
 ###################################################################################################
 #Go through unassigned ZCTAS and assign them to the best candidate neighbor using a series of
@@ -179,8 +172,7 @@ arcpy.AddMessage("{0} ZCTAs remain to be assigned".format(str(null_Count)))
 #remaining ZCTAS looking for Dyad_Max first, then the most visits. If the best nbr isn't in the
 #generated lists, the current ZCTA is assigned to a neighbor based on most shared boundary.
 ###################################################################################################
-if '52404' in unAssigned_List:
-	arcpy.AddMessage("52404 has not yet ben assigned")
+
 while len(unAssigned_List) > 0:
 	arcpy.SetProgressor("step","finding best suited assignment for remaining ZCTAs...",0,len(unAssigned_List),1)
 	for i in unAssigned_List:

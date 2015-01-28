@@ -95,8 +95,6 @@ for key,values in Assign_Dict.iteritems():
 	updateQuery = Assigned_To_Field + " = '" + str(key) + "'"
 	ZCTA_List = values #just store values as a seperate list for easier tracking rember, the key is in the list
 
-	if key == '50220':
-		arcpy.AddMessage("Seed: {0}, ZCTAs assigned to it: {1}".format(key,ZCTA_List))
 	#find all instances of visits occuring within the Service Area going to the seed as a provider
 	with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
 		for row in cursor:
