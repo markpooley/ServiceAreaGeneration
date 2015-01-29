@@ -42,8 +42,8 @@ SeedList =[] # list of seeds
 Assign_Dict = {} #Dictionary of ZCTAs and assignments
 ServiceArea_Dict = defaultdict(list) #dictionaryy of ZCTAs assigend to Seeds
 DyadTable_FieldList = [f.name for f in arcpy.ListFields(DyadTable)] #create field list from Dyad Table
-DyadRec_field = [f for f in DyadTable_FieldList if 'REC' in f or 'rec' in f][0] #find rec_ZCTA field within field list
-DyadProv_field = [f for f in DyadTable_FieldList if 'PROV' in f or'prov' in f][0] #find prov_ZCTA field within field list
+DyadRec_field = [f for f in DyadTable_FieldList if 'rec' in f.lower()][0] #find rec_ZCTA field within field list
+DyadProv_field = [f for f in DyadTable_FieldList if 'prov' in f.lower()][0] #find prov_ZCTA field within field list
 NewDyadTable = arcpy.CreateTable_management(OutputLocation,OutputName,DyadTable) #create new dyad table using old as template
 
 #change field names in new dyad table
