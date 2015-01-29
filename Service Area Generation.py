@@ -5,9 +5,9 @@
 # Author  		: Mark Pooley (mark-pooley@uiowa.edu)
 # Link    		: http://www.ppc.uiowa.edu
 # Date    		: 2015-01-20 14:41:18
-# Version		: $1.0$
+# Version		: $1.0.1$
 # Description	: Takes ZCTAs and a Dyad table to create Base Service Areas that will likely need
-# further analyasis and aggregation
+# further analyasis and aggregation.
 #-------------------------------------------------------------------------------------------------
 
 ###################################################################################################
