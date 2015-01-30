@@ -1,12 +1,14 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
 #--------------------------------------------------------------------------------------------------
-# Name          : Dyad Table Creator
+# Name          : DyadTableCreator.py
 # Author  		: Mark Pooley (mark-pooley@uiowa.edu)
 # Link    		: http://www.ppc.uiowa.edu
 # Date    		: 2015-01-27 10:14:59
 # Version		: $1.0$
-# Description	: Description Here
+# Description	: Generates a new Dyad Table from the Service Areas created in using the Service area
+# Generator script/tool. The Dyad table and ZCTAs used are needed as well. The new Dyad table
+# is written to a user specified location.
 #-------------------------------------------------------------------------------------------------
 
 ###################################################################################################
@@ -75,6 +77,8 @@ arcpy.AddMessage("{0} seeds found".format(str(len(SeedList))))
 #Create the Dyad Table
 ###################################################################################################
 arcpy.SetProgressor("step","Creating New Dyad table",0,len(ServiceArea_Dict),1)
+prov_Index = DyadTable_FieldList.index(DyadProv_field)
+rec_Index = DyadTable_FieldList.index(DyadRec_field)
 
 for key,values in ServiceArea_Dict.iteritems():
 	tempDict = {}#temp dict to track where visits are going
@@ -85,34 +89,74 @@ for key,values in ServiceArea_Dict.iteritems():
 		dyadRec_Query = DyadRec_field + " = " + item
 		with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadRec_Query) as cursor:
 			for row in cursor:
-
-				#look at provider, and what ZCTA it's assigned to in the Assigned Dict. If it's
-				#in the temp dictionary yet. If so, aggregate visits occuring
-				if Assign_Dict[str(row[DyadTable_FieldList.index(DyadProv_field)])] in tempDict.keys():
-					#if in temp Dictionary already, increment it by visits
-					tempDict[Assign_Dict[str(row[DyadTable_FieldList.index(DyadProv_field)])]] += row[DyadTable_FieldList.index("N_kids")]
-				#if it already exists and is found again, aggregate visits occuring there
+				if str(row[prov_Index]) in Assign_Dict.keys():#check that provider has a key in the assignment dictionary
+					#look at provider, and what ZCTA it's assigned to in the Assigned Dict. If it's
+					#in the temp dictionary yet. If so, aggregate visits occuring
+					if Assign_Dict[str(row[prov_Index])] in tempDict.keys():
+						#if in temp Dictionary already, increment it by visits
+						tempDict[Assign_Dict[str(row[prov_Index])]] += row[DyadTable_FieldList.index("N_kids")]
+					#if it already exists and is found again, aggregate visits occuring there
+					else:
+						tempDict[str(row[prov_Index])] = row[DyadTable_FieldList.index("N_kids")]
+					#arcpy.AddMessage(tempDict)
+					arcpy.SetProgressorLabel("{0} entries found for {1}".format(len(tempDict),recDSA))
 				else:
-					tempDict[str(row[DyadTable_FieldList.index(DyadProv_field)])] = row[DyadTable_FieldList.index("N_kids")]
-				#arcpy.AddMessage(tempDict)
-				arcpy.SetProgressorLabel("{0} entries found for {1}".format(len(tempDict),recDSA))
+					arcpy.SetProgressorLabel("{0} not found in assignment dictionary".format(row[prov_Index]))
 
 	with arcpy.da.InsertCursor(NewDyadTable,NewDyadTable_FieldList) as cursor:
 		for k,v in tempDict.iteritems():
 			cursor.insertRow((0,recDSA,k,v,0,None,None,None))
 
 	arcpy.SetProgressorPosition()
+###################################################################################################
+#Get indices and generate a list of unique providers
+###################################################################################################
+featureCount = int(arcpy.GetCount_management(NewDyadTable).getOutput(0))
+#get indices of fields that will be needed
+rec_Index = NewDyadTable_FieldList.index("REC_DSA")
+prov_Index = NewDyadTable_FieldList.index("PROV_DSA")
+visits_Index = NewDyadTable_FieldList.index("Visits_Dyad")
+max_Index = NewDyadTable_FieldList.index("Max_kids")
+dyad_max_Index = NewDyadTable_FieldList.index("Dyad_max")
+VisitsTotal_Index = NewDyadTable_FieldList.index("Visits_Total")
 
+recList = set() #declare list of rec ZCTAS
+arcpy.SetProgressor("step","Generating list of recipient DSAs..",0,featureCount,1)
+with arcpy.da.SearchCursor(NewDyadTable,NewDyadTable_FieldList) as cursor:
+	for row in cursor:
+		recList.add(row[rec_Index])
+
+recList = list(recList)#convert set to a list
 
 ###################################################################################################
-#Process
+#Update the max visits, number of utilizers and max dyad fields
 ###################################################################################################
-#arcpy.SetProgressor("step","message",0,#processLength,1)
+arcpy.SetProgressor("step","Updating max visits, number of utilizers and max dyad fields...",0,len(recList),1)
+#loop through list and
+for i in recList:
+	recQuery = "REC_DSA = " + str(i) #query
+	maxVisits = 0
+	utilizers = 0
+	#aggregate visits and find the max number of visits
+	with arcpy.da.SearchCursor(NewDyadTable,NewDyadTable_FieldList,recQuery) as cursor:
+		for row in cursor:
+			utilizers += row[visits_Index] #aggregate visits for th enumber of uitlizers
+			if row[visits_Index] > maxVisits:
+				maxVisits = row[visits_Index]
 
-###################################################################################################
-#Processes
-###################################################################################################
-#arcpy.SetProgressor("step","message",0,#processLength,1)
+	#update the fields
+	with arcpy.da.UpdateCursor(NewDyadTable,NewDyadTable_FieldList,recQuery) as cursor:
+		for row in cursor:
+			row[max_Index] = maxVisits
+			row[VisitsTotal_Index] = utilizers
+			#assign the max accordingly
+			if row[visits_Index] == maxVisits:
+				row[dyad_max_Index] = 1
+			else:
+				row[dyad_max_Index] = 0
+			cursor.updateRow(row)
+
+	arcpy.SetProgressorPosition()
 
 ###################################################################################################
 #Final Output and cleaning of temp data/variables
