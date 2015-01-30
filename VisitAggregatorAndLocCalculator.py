@@ -7,7 +7,7 @@
 # Date    		: 2015-01-26 11:56:18
 # Version		: $1.0$
 # Description	: Takes ZCTAs, Service Areas, and the current Dyad table to calculate the Localization
-# of Care (LOC) for each DSA.
+# of Care (LOC) for each DSA. Addtionally, the pearson coefficient is determined
 #-------------------------------------------------------------------------------------------------
 
 ###################################################################################################
@@ -16,6 +16,7 @@
 import os
 import arcpy
 from arcpy import env
+import numpy
 from operator import itemgetter
 from collections import defaultdict
 
@@ -72,10 +73,10 @@ FieldsToAdd = ["Visits_In","Visits_Out","Visits_Total","LOC"] #list of fields to
 arcpy.SetProgressor("step","Adding fields to Service Areas feature class...",0,len(FieldsToAdd),1)
 for item in FieldsToAdd:
 	if item not in ServiceAreas_FieldList:
-		if item == "LOC": #different data type for LOC field
-			arcpy.AddField_management(ServiceAreas,item,"FLOAT")
-		else:
+		if item != "LOC": #different data type for LOC field
 			arcpy.AddField_management(ServiceAreas,item,"LONG")
+		else:
+			arcpy.AddField_management(ServiceAreas,item,"FLOAT")
 		arcpy.SetProgressorPosition()
 
 ###################################################################################################
@@ -125,7 +126,26 @@ for key,values in Assign_Dict.iteritems():
 	arcpy.SetProgressorPosition()
 
 ###################################################################################################
+#Determine pearson correlation coefficient of area and LOC
+###################################################################################################
+area = []
+LOC = []
+featureCount = int(arcpy.GetCount_management(ServiceAreas).getOutput(0))
+area_index = ServiceAreas_FieldList.index([f for f in ServiceAreas_FieldList if 'area' in f.lower()][0])#get area index
+LOC_index = ServiceAreas_FieldList.index([f for f in ServiceAreas_FieldList if 'loc' in f.lower()][0])#get LOC index
+
+arcpy.SetProgressor("step","determining pearson coefficient of area to LOC...",0,featureCount,1)
+with arcpy.da.SearchCursor(ServiceAreas,ServiceAreas_FieldList) as cursor:
+	for row in cursor:
+		area.append(row[area_index])
+		LOC.append(row[LOC_index])
+		arcpy.SetProgressorPosition()
+
+correlation = numpy.corrcoef(area,LOC)[0,1]
+
+###################################################################################################
 #Final Output and cleaning of temp data/variables
 ###################################################################################################
 arcpy.AddMessage("minimum LOC:{0} \nmaximum LOC: {1}".format(round(min(LOC_List),3),round(max(LOC_List),3)))
+arcpy.AddMessage("correlation coefficient area to LOC: {0}".format(correlation))
 arcpy.AddMessage("Process complete!")
