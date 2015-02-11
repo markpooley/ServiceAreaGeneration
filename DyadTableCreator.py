@@ -23,11 +23,12 @@ from collections import defaultdict
 ###################################################################################################
 #Input Variable loading and environment declaration
 ###################################################################################################
-ZCTAs = arcpy.GetParameterAsText(0)
-ServiceAreas = arcpy.GetParameterAsText(1)
-DyadTable = arcpy.GetParameterAsText(2)
-OutputLocation = arcpy.GetParameterAsText(3)
-OutputName = arcpy.GetParameterAsText(4)
+ZCTAs = arcpy.GetParameterAsText(0) #base features used to create service areas
+ZCTA_Field = arcpy.GetParameterAsText(1) #unique Identifier field for base features
+ServiceAreas = arcpy.GetParameterAsText(2) # Service areas generated from base features
+DyadTable = arcpy.GetParameterAsText(3) #dyad table used to create service areas from base features
+OutputLocation = arcpy.GetParameterAsText(4) #location of new dyad Table
+OutputName = arcpy.GetParameterAsText(5) #name of new dyad table
 
 ###################################################################################################
 # Defining global functions
@@ -38,8 +39,7 @@ OutputName = arcpy.GetParameterAsText(4)
 #Global variables to be used in process
 ###################################################################################################
 ZCTA_FieldList = [f.name for f in arcpy.ListFields(ZCTAs)]
-Assigned_To_Field = [f for f in ZCTA_FieldList if 'Assign' in f][0]
-ZCTA_Field = [f for f in ZCTA_FieldList if 'ZCTA' in f or "ZIP" in f][0]
+Assigned_To_Field = [f for f in ZCTA_FieldList if 'Assign_To' in f][0] #field of assignments
 SeedList =[] # list of seeds
 Assign_Dict = {} #Dictionary of ZCTAs and assignments
 ServiceArea_Dict = defaultdict(list) #dictionaryy of ZCTAs assigend to Seeds
@@ -62,17 +62,11 @@ featureCount = int(arcpy.GetCount_management(ServiceAreas).getOutput(0))#count o
 with arcpy.da.SearchCursor(ZCTAs,[ZCTA_Field,Assigned_To_Field]) as cursor:
 	for row in cursor:
 		SeedList.append(row[1])
-		Assign_Dict[row[0]] = row[1]#Dictionary of ZCTA assignments
-		#create a dictionary of assignments
-		if str(row[1]) in Assign_Dict.keys():
-			ServiceArea_Dict[row[1]].append(str(row[0]))
-		else:
-			ServiceArea_Dict[row[1]].append(str(row[0]))
-
+		Assign_Dict[row[0]].append(row[1])#Dictionary of ZCTA assignments
+		ServiceArea_Dict[row[1]].append(str(row[0])) #create a dictionary of assignments
 
 SeedList = list(set(SeedList)) #create a list from the set - removing duplicates
-arcpy.AddMessage("{0} number of DSAs".format(featureCount))
-arcpy.AddMessage("{0} seeds found".format(str(len(SeedList))))
+arcpy.AddMessage("Number of DSAs: {0}".format(featureCount))
 ###################################################################################################
 #Create the Dyad Table
 ###################################################################################################
@@ -105,14 +99,16 @@ for key,values in ServiceArea_Dict.iteritems():
 
 	with arcpy.da.InsertCursor(NewDyadTable,NewDyadTable_FieldList) as cursor:
 		for k,v in tempDict.iteritems():
-			cursor.insertRow((0,recDSA,k,v,0,None,None,None))
+			cursor.insertRow((0,recDSA,k,v,0,None,None))
 
 	arcpy.SetProgressorPosition()
 ###################################################################################################
 #Get indices and generate a list of unique providers
 ###################################################################################################
 featureCount = int(arcpy.GetCount_management(NewDyadTable).getOutput(0))
-#get indices of fields that will be needed
+#-------------------------------------------------------------------------------------------
+#get indices of fields that will be needed in search cursor
+#-------------------------------------------------------------------------------------------
 rec_Index = NewDyadTable_FieldList.index("REC_DSA")
 prov_Index = NewDyadTable_FieldList.index("PROV_DSA")
 visits_Index = NewDyadTable_FieldList.index("Visits_Dyad")
@@ -120,7 +116,7 @@ max_Index = NewDyadTable_FieldList.index("Max_kids")
 dyad_max_Index = NewDyadTable_FieldList.index("Dyad_max")
 VisitsTotal_Index = NewDyadTable_FieldList.index("Visits_Total")
 
-recList = set() #declare list of rec ZCTAS
+recList = set() #declare list of recipient ZCTAS
 arcpy.SetProgressor("step","Generating list of recipient DSAs..",0,featureCount,1)
 with arcpy.da.SearchCursor(NewDyadTable,NewDyadTable_FieldList) as cursor:
 	for row in cursor:
