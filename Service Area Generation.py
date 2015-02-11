@@ -6,7 +6,7 @@
 # Link    		: http://www.ppc.uiowa.edu
 # Date    		: 2015-01-20 14:41:18
 # Version		: $1.0.1$
-# Description	: Takes ZCTAs and a Dyad table to create Base Service Areas that will likely need
+# Description	: Takes ZCTAs and a Dyad table to create Initial Service Areas that will likely need
 # further analyasis and aggregation.
 #-------------------------------------------------------------------------------------------------
 
@@ -29,6 +29,7 @@ DyadVisits_Field = arcpy.GetParameterAsText(2)
 TotalVisits_Vield = arcpy.GetParameterAsText(3)
 outputLocation = arcpy.GetParameterAsText(4)
 output_Name = arcpy.GetParameterAsText(5)
+env.workspace = outputLocation #use this as the workspace too
 
 featureCount = int(arcpy.GetCount_management(DyadTable).getOutput(0)) # get a count of rows in dyad table.
 
@@ -59,8 +60,8 @@ seed_List = []
 assign_dict = {}
 
 ###################################################################################################
-#Find seeds by checking dyad table for instances where recipient and provider ZCTAs match, or where
-#the first crterion is satisfied and the N_kids matches Max_kids....
+#Find seeds by checking dyad table for instances where recipient and provider ZCTAs match and where
+#the number of visits between a dyad matches Max_kids (or dyad_max == 1)....
 ###################################################################################################
 arcpy.SetProgressor("step","Finding instances where recipient and provider ZCTA match...",0,featureCount,1)
 
@@ -88,15 +89,13 @@ with arcpy.da.UpdateCursor(ZCTAs,ZCTAs_FieldList) as cursor:
 			row[ZCTAs_FieldList.index("Assigned_To")] = row[ZCTAs_FieldList.index(ZCTA_field)]
 			cursor.updateRow(row)
 		arcpy.SetProgressorPosition()
-del row # delete row object
-del cursor #delete cursor object
 
 #get count of unassigned ZCTAS
 null_Count = 0
 with arcpy.da.SearchCursor(ZCTAs,"Assigned_To","Assigned_To IS NULL") as cursor:
 	for row in cursor:
 		null_Count +=1
-arcpy.AddMessage("{0} ZCTAs remain to be assigned".format(str(null_Count)))
+arcpy.AddMessage("{0} ZCTAs remain to be assigned".format(null_Count))
 
 ###################################################################################################
 #Generate a neighbor table and find all instances of seed neighbors where the provider ZCTA is the
@@ -123,8 +122,7 @@ for i in seed_List:
 		for row in cursor:
 			temp_nbr_List.append(row[NBRTable_FieldList.index(srcZCTA_Field)]) #append src zctas to field list
 
-	del row # delete row object
-	del cursor #delete cursor object
+
 
 	#find instances where ZCTAs in the temp nbr list and the dyad max is equal to 1 - meaning that the most care
 	#was received in the current seed ZCTA.
@@ -133,8 +131,6 @@ for i in seed_List:
 			if str(row[DyadTable_FieldList.index(DyadRec_field)]) in temp_nbr_List and row[DyadTable_FieldList.index("Dyad_max")] != 1:
 				temp_nbr_List.remove(str(row[DyadTable_FieldList.index(DyadRec_field)]))
 
-	del row # delete row object
-	del cursor #delete cursor object
 
 	with arcpy.da.UpdateCursor(ZCTAs,[ZCTA_field,"Assigned_To"]) as cursor:
 		for row in cursor:
@@ -146,9 +142,6 @@ for i in seed_List:
 				assign_dict[str(row[0])] = currentSeed #update Assignment Dictionary
 				cursor.updateRow(row)
 
-	del row # delete row object
-	del cursor #delete cursor object
-
 	arcpy.SetProgressorPosition()
 
 
@@ -159,8 +152,7 @@ with arcpy.da.SearchCursor(ZCTAs,[ZCTA_field,"Assigned_To"],"Assigned_To IS NULL
 	for row in cursor:
 		null_Count +=1
 		unAssigned_List.append(row[0])
-del cursor #delete cursor object
-del row # delete row object
+
 del temp_nbr_List
 
 arcpy.AddMessage("{0} ZCTAs have been assigned".format(str(len(assign_dict))))
@@ -171,6 +163,9 @@ arcpy.AddMessage("{0} ZCTAs remain unassigned".format(str(null_Count)))
 #dictionaries and lists to track what is going on. Find neighbors and their assignments. Assign
 #remaining ZCTAS looking for Dyad_Max first, then the most visits. If the best nbr isn't in the
 #generated lists, the current ZCTA is assigned to a neighbor based on most shared boundary.
+
+#this could be upated to look for adjacent assignments - looking at care to where a neighbor is
+#assigned to (i.e. if no care occurs to a neighbor, but to where a neighbor is assigned to)
 ###################################################################################################
 
 while len(unAssigned_List) > 0:
@@ -200,8 +195,6 @@ while len(unAssigned_List) > 0:
 					if row[NBRTable_FieldList.index("LENGTH")] > nbr_Length:
 						best_nbr_Length = assign_dict[row[NBRTable_FieldList.index(nbrZCTA_Field)]]
 
-		del row # delete row object
-		del cursor #delete cursor object
 
 		temp_key_List = list(set(temp_key_List)) #remove duplicates from list by creating a list from the set of the native list
 
@@ -236,7 +229,7 @@ while len(unAssigned_List) > 0:
 				best_nbr = best_nbr_Length
 				arcpy.SetProgressorLabel("{0} assigned to {1} based on shared border".format(str(currentZCTA),str(best_nbr_Length)))
 
-			#find entry of currnt ZCTA and update the Assigned_To field with the best neighbor
+			#find entry of currnet ZCTA and update the Assigned_To field with the best neighbor
 			with arcpy.da.UpdateCursor(ZCTAs,[ZCTA_field,"Assigned_To"],AssignQuery) as cursor:
 				for row in cursor:
 					#assign the currently unassigned ZCTA to what the best fitting neighbor has been assigned to.
@@ -256,18 +249,25 @@ while len(unAssigned_List) > 0:
 		arcpy.SetProgressorPosition()
 	arcpy.AddMessage("{0} ZCTAs remain unassigned".format(len(unAssigned_List)))
 	arcpy.ResetProgressor() #reset progressor for next iteration through the above loop
+
+
+####################################################################################################
+#Delete temp data
+####################################################################################################
+#Delete Temporary files created during the processing
+arcpy.AddMessage("Removing Temporary files...")
+arcpy.Delete_management(NeighborTable)
 ###################################################################################################
 #Dissolve Assigned ZCTAs into service areas
 ###################################################################################################
 
 arcpy.SetProgressorLabel("Dissolving Assigned ZCTAs into Service Areas...")
-ServiceAreas = arcpy.Dissolve_management(ZCTAs,output_Name,"Assigned_To")
+output = os.path.join(outputLocation,output_Name)#join output location and name for dissolve
+ServiceAreas = arcpy.Dissolve_management(ZCTAs,output,"Assigned_To")
+arcpy.AddMessage('Output Location: {0}'.format(os.path.realpath(output)))
 
 ###################################################################################################
 #Final Output and cleaning of temp data/variables
 ###################################################################################################
 
 arcpy.AddMessage("Process complete!")
-
-# Replace a layer/table view name with a path to a dataset (which can be a layer file) or create the layer/table view within the script
-# The following inputs are layers or table views: "Iowa_ZCTAs"
