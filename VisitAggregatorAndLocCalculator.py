@@ -6,8 +6,9 @@
 # Link    		: http://www.ppc.uiowa.edu
 # Date    		: 2015-01-26 11:56:18
 # Version		: $1.0$
-# Description	: Takes ZCTAs, Service Areas, and the current Dyad table to calculate the Localization
-# of Care (LOC) for each DSA. Addtionally, the pearson coefficient is determined
+# Description	: Takes ZCTAs, Service Areas, and the Dyad Table used to create the Service Areas
+# to calculate the Localization of Care (LOC) for each DSA.
+# Addtionally, the pearson coefficient is determined
 #-------------------------------------------------------------------------------------------------
 
 ###################################################################################################
@@ -24,10 +25,12 @@ from collections import defaultdict
 #Input Variable loading and environment declaration
 ###################################################################################################
 ZCTAs = arcpy.GetParameterAsText(0)
-ServiceAreas = arcpy.GetParameterAsText(1)
-DyadTable = arcpy.GetParameterAsText(2)
-Visits_Field = arcpy.GetParameterAsText(3)
-VisitsTotal_Field = arcpy.GetParameterAsText(4)
+ZCTA_Field = arcpy.GetParameterAsText(1)
+Assigned_To_Field = arcpy.GetParameterAsText(2)
+ServiceAreas = arcpy.GetParameterAsText(3)
+DyadTable = arcpy.GetParameterAsText(4)
+Visits_Field = arcpy.GetParameterAsText(5)
+VisitsTotal_Field = arcpy.GetParameterAsText(6)
 
 ###################################################################################################
 # Defining global functions
@@ -38,27 +41,23 @@ VisitsTotal_Field = arcpy.GetParameterAsText(4)
 #Global variables to be used in process
 ###################################################################################################
 ZCTA_FieldList = [f.name for f in arcpy.ListFields(ZCTAs)]
-Assigned_To_Field = [f for f in ZCTA_FieldList if 'Assign' in f][0]
-ZCTA_Field = [f for f in ZCTA_FieldList if 'ZCTA' in f or "ZIP" in f][0]
 SeedList =[] # list of seeds
-Assign_Dict = defaultdict(list) #dicationy of ZCTAs assigend to Seeds
+Assign_Dict = defaultdict(list) #dictionary of ZCTAs assigend to Seeds
 DyadTable_FieldList = [f.name for f in arcpy.ListFields(DyadTable)] #create field list from Dyad Table
-DyadRec_field = [f for f in DyadTable_FieldList if 'REC' in f or 'rec' in f][0] #find rec_ZCTA field within field list
-DyadProv_field = [f for f in DyadTable_FieldList if 'PROV' in f or'prov' in f][0] #find prov_ZCTA field within field list
+DyadRec_field = [f for f in DyadTable_FieldList if 'rec' in f.lower()][0] #find rec_ZCTA field within field list
+DyadProv_field = [f for f in DyadTable_FieldList if 'prov' in f.lower()][0] #find prov_ZCTA field within field list
 
 ###################################################################################################
-#Get a list of the seeds
+#Get a list of the seeds create a dictionary containing all the unique entries in the "Assigned_To"
+#field and append all those areas assigned to them in the list for that entry in the dictionary.
 ###################################################################################################
 with arcpy.da.SearchCursor(ZCTAs,[ZCTA_Field,Assigned_To_Field]) as cursor:
 	for row in cursor:
 		SeedList.append(row[1])
 		#create a dictionary of assignments
-		if str(row[1]) in Assign_Dict.keys():
-			Assign_Dict[row[1]].append(str(row[0]))
-		else:
-			Assign_Dict[row[1]].append(str(row[0]))
-
-
+		Assign_Dict[str(row[1])].append(str(row[0]))
+		if row[1] == None:
+			arcpy.AddMessage(row)
 
 SeedList = list(set(SeedList))
 arcpy.AddMessage("{0} seeds found".format(str(len(SeedList))))
@@ -78,6 +77,16 @@ for item in FieldsToAdd:
 		else:
 			arcpy.AddField_management(ServiceAreas,item,"FLOAT")
 		arcpy.SetProgressorPosition()
+ServiceAreas_FieldList = [f.name for f in arcpy.ListFields(ServiceAreas)] #redefine after adding fields
+####################################################################################################
+#build a dictionary of recipients and total visits occuring within that recipient ZCTA. This is used
+#for total visit aggregation in the service areas. It's faster and eaiser than using search cursors
+####################################################################################################
+visitDict = {}
+with arcpy.da.SearchCursor(DyadTable,[DyadRec_field,VisitsTotal_Field]) as cursor:
+	for row in cursor:
+		visitDict[str(row[0])] = row[1]
+
 
 ###################################################################################################
 #Find all care occuring within the Service Area, and the total care sought in all the ZCTAS within
@@ -92,7 +101,7 @@ for key,values in Assign_Dict.iteritems():
 	Visits_Out = 0
 	Visits_Total = 0
 
-	dyadQuery = DyadProv_field + " = " + key
+	dyadQuery = DyadProv_field + " = " + str(key)
 	updateQuery = Assigned_To_Field + " = '" + str(key) + "'"
 	ZCTA_List = values #just store values as a seperate list for easier tracking rember, the key is in the list
 
@@ -101,16 +110,31 @@ for key,values in Assign_Dict.iteritems():
 		for row in cursor:
 			if str(row[DyadTable_FieldList.index(DyadRec_field)]) in ZCTA_List: #convert row to string!
 				Visits_In += row[DyadTable_FieldList.index(Visits_Field)]
-				Visits_Total += row[DyadTable_FieldList.index(VisitsTotal_Field)]
+
+
+	#-------------------------------------------------------------------------------------------
+	#use the visits dictionary to determine the max care occuring in a service area. The ZCTAs
+	#assigned to the seed, and the seed are all in the value list, so aggregation of total care
+	#is straight forward
+	#-------------------------------------------------------------------------------------------
+	for item in values:
+		try:
+			Visits_Total += visitDict[item]
+		except KeyError:
+			pass
+	if Visits_Total == 0:
+		arcpy.AddMessage('{0} generated 0 total visits'.format(key))
 
 	#find instances of visits occuring between ZCTAs within the same service area where the provider
 	#isn't the seed.
 	for item in ZCTA_List:
 		if item != key: #make sure to not count the seed twice
-			dyadQuery = dyadQuery = DyadProv_field + " = " + item
-			with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,dyadQuery) as cursor:
-				if str(row[DyadTable_FieldList.index(DyadRec_field)]) in ZCTA_List:
-					Visits_In += row[DyadTable_FieldList.index(Visits_Field)]
+			Query =  DyadProv_field + " = " + item
+			with arcpy.da.SearchCursor(DyadTable,DyadTable_FieldList,Query) as cursor:
+				for row in cursor:
+					if str(row[DyadTable_FieldList.index(DyadRec_field)]) in ZCTA_List:
+						Visits_In += row[DyadTable_FieldList.index(Visits_Field)]
+
 
 
 	#update rows in the Service Area feature class
